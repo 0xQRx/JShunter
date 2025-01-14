@@ -7,3 +7,4 @@ node_modules/
 *.tmp
 .env
 test.js
+output.txt
