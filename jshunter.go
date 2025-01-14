@@ -391,6 +391,9 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
             return urlStr, nil
         }
 
+        // Add User-Agent header
+        req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:134.0) Gecko/20100101 Firefox/134.0")
+    
         if cookie != "" {
             req.Header.Set("Cookie", cookie)
         }
