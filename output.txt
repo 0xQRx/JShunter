@@ -1,4 +1,0 @@
-URL: http://127.0.0.1/test.js
-Sensitive Data [shopify_access_token]: shpat_abcdefghijklmnopqrstuvwxyz012345
-Sensitive Data [datadog_api_key]: ddapi_abcdefghijklmnopqrstuvwxyz012345
-Sensitive Data [gitlab_personal_access_token]: glpat-Abcdefghijklmnopqrst
