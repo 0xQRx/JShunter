@@ -25,7 +25,10 @@ var colors = map[string]string{
     "NC":     "\033[0m",
 }
 
-
+var filter = []string{
+    "SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED",
+    // Add more strings or patterns to exclude as needed
+}
 
 var (
     //regex patterns
@@ -68,7 +71,7 @@ var (
         "aws_api_key":                   regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
 	"slack_token":                   regexp.MustCompile(`\"api_token\":\"(xox[a-zA-Z]-[a-zA-Z0-9-]+)\"`),
 	"SSH_privKey":                   regexp.MustCompile(`([-]+BEGIN [^\s]+ PRIVATE KEY[-]+[\s]*[^-]*[-]+END [^\s]+ PRIVATE KEY[-]+)`),
-	"Heroku API KEY":                regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`),
+	"Heroku API KEY":                regexp.MustCompile(`(?i)(?:^|[^/])([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:$|[^/])`),
 	"slack_webhook_url":             regexp.MustCompile(`https://hooks.slack.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+`),
 	"heroku_api_key":                regexp.MustCompile(`[hH]eroku[a-zA-Z0-9]{32}`),
 	"dropbox_access_token":          regexp.MustCompile(`(?i)^sl\.[A-Za-z0-9_-]{16,50}$`),
@@ -432,9 +435,12 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
     for name, pattern := range regexPatterns {
         if pattern.Match(body) {
             matches := pattern.FindAllString(string(body), -1)
-            if len(matches) > 0 {
-                matchesMap[name] = append(matchesMap[name], matches...)
-            }
+            for _, match := range matches {
+				// Exclude matches that are in the filter
+				if !isFiltered(match) {
+					matchesMap[name] = append(matchesMap[name], match)
+				}
+			}
         }
     }
 
@@ -450,4 +456,14 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
     }
 
     return matchesMap
+}
+
+// isFiltered checks if a match is part of the filter
+func isFiltered(match string) bool {
+	for _, exclude := range filter {
+		if strings.Contains(match, exclude) {
+			return true
+		}
+	}
+	return false
 }

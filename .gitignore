@@ -6,5 +6,5 @@ node_modules/
 *.log
 *.tmp
 .env
-test.js
+*.js
 output.txt
