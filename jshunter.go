@@ -36,6 +36,13 @@ var filter = []string{
 var (
     //regex patterns
     regexPatterns = map[string]*regexp.Regexp{
+    "aws_identity_pool_id": regexp.MustCompile(`(?:aws_cognito_identity_pool_id|identityPoolId|cognitoIdentityPoolId)["']?\s*(?::|=)\s*["']([^"']+)`),
+	"aws_user_pool_id":     regexp.MustCompile(`(?:userPoolId|aws_user_pools_id)["']?\s*(?::|=)\s*["']([^"']+)`),
+	"aws_client_id":        regexp.MustCompile(`(?:userPoolWebClientId|client-id|clientId)["']?\s*(?::|=)\s*["']([^"']+)`),
+	"aws_cognito_region":           regexp.MustCompile(`(?:aws_cognito_region|region)["']?\s*(?::|=)\s*["']([^"']+)`),
+	"aws_rum_role":         regexp.MustCompile(`(?:RoleArn=|roleArn"|roleArn=|role-arn)["']?([^"'&]+)`),    
+    "aws_generic_id": regexp.MustCompile(`(?i)[a-z]{2}-[a-z]+-\d:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
+    "aws_rum_role_generic":         regexp.MustCompile(`(arn:(?:aws(?:-[a-z]+)?):iam::\d{12}:role(?:\/[A-Za-z0-9_+=,.@-]+)+)`),
 	"google_api":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
 	"firebase":                      regexp.MustCompile(`AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}`),
 	"google_captcha":                regexp.MustCompile(`6L[0-9A-Za-z-_]{38}|^6[0-9a-zA-Z_-]{39}$`),
