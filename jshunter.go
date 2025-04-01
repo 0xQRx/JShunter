@@ -55,7 +55,9 @@ var (
 	"amazon_aws_url2":               regexp.MustCompile(`([a-zA-Z0-9-._]+\.s3\.amazonaws\.com|s3://[a-zA-Z0-9-._]+|s3-[a-zA-Z0-9-._/]+|s3.amazonaws.com/[a-zA-Z0-9-._]+|s3.console.aws.amazon.com/s3/buckets/[a-zA-Z0-9-._]+)`),
 	"facebook__access_token":        regexp.MustCompile(`EAACEdEose0cBA[0-9A-Za-z]+`),
 	"authorization_basic":           regexp.MustCompile(`basic [a-zA-Z0-9=:_\+\/-]{5,100}`),
+	"authorization_Basic":           regexp.MustCompile(`Basic [a-zA-Z0-9=:_\+\/-]{5,100}`),
 	"authorization_bearer":          regexp.MustCompile(`bearer [a-zA-Z0-9_\-\.=:_\+\/]{5,100}`),
+	"authorization_Bearer":          regexp.MustCompile(`Bearer [a-zA-Z0-9_\-\.=:_\+\/]{5,100}`),
         "authorization_api":             regexp.MustCompile(`(?i)\bapi(?:[_\s]*key|[\s]*[\=\:])\s*["']?[a-zA-Z0-9_\-]{5,100}\b`),
 	"twilio_api_key":                regexp.MustCompile(`SK[0-9a-fA-F]{32}`),
 	//"twilio_account_sid":            regexp.MustCompile(`AC[a-zA-Z0-9_\-]{32}`),
@@ -136,7 +138,7 @@ var (
 	"tiktok_access_token":           regexp.MustCompile(`tiktok_access_token=[a-zA-Z0-9_]+`),
 	"slack_client_secret":           regexp.MustCompile(`xoxs-[0-9]{1,9}.[0-9A-Za-z]{1,12}.[0-9A-Za-z]{24,64}`),
     "phone_number":                  regexp.MustCompile(`^\+\d{9,14}$`),
-    "email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
+    //"email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
 	"AliCloudAccessKey":		 regexp.MustCompile(`^LTAI[A-Za-z0-9]{12,20}$`),
 	"TencentCloudAccessKey":	 regexp.MustCompile(`^AKID[A-Za-z0-9]{13,20}$`),
     }
