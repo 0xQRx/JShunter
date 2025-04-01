@@ -4,10 +4,11 @@ import (
     "bufio"
     "flag"
     "fmt"
-    "io/ioutil"
+    "io"
     "net/http"
     "net/url"
     "os"
+    "path/filepath"
     "regexp"
     "strings"
     "sync"
@@ -25,6 +26,7 @@ var colors = map[string]string{
     "NC":     "\033[0m",
 }
 
+// Define colors for output
 var filter = []string{
     "SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED",
     "SECRET_DO_NOT_PASS_THIS_OR_YOU_WILL_BE_FIRED",
@@ -39,8 +41,9 @@ var (
     "aws_identity_pool_id": regexp.MustCompile(`(?:aws_cognito_identity_pool_id|identityPoolId|cognitoIdentityPoolId)["']?\s*(?::|=)\s*["']([^"']+)`),
 	"aws_user_pool_id":     regexp.MustCompile(`(?:userPoolId|aws_user_pools_id)["']?\s*(?::|=)\s*["']([^"']+)`),
 	"aws_client_id":        regexp.MustCompile(`(?:userPoolWebClientId|client-id|clientId)["']?\s*(?::|=)\s*["']([^"']+)`),
-	"aws_cognito_region":           regexp.MustCompile(`(?:aws_cognito_region|region)["']?\s*(?::|=)\s*["']([^"']+)`),
-	"aws_rum_role":         regexp.MustCompile(`(?:RoleArn=|roleArn"|roleArn=|role-arn)["']?([^"'&]+)`),    
+	"aws_cognito_region":           regexp.MustCompile(`(?:aws_cognito_region|awsRegion|cognito_region)["']?\s*(?::|=)\s*["']([a-z]{2}-[a-z]+-[0-9])["']`),
+	"aws_rum_role":         regexp.MustCompile(`(?:RoleArn=|roleArn"|roleArn=|role-arn)["']?([^"'&\s]{20,})["']?`),    
+    "aws_cognito_user_pool_id": regexp.MustCompile(`(us(-gov)?|ap|ca|cn|eu|sa)-(central|(north|south)?(east|west)?)-\d:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`),
     "aws_generic_id": regexp.MustCompile(`(?i)[a-z]{2}-[a-z]+-\d:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
     "aws_rum_role_generic":         regexp.MustCompile(`(arn:(?:aws(?:-[a-z]+)?):iam::\d{12}:role(?:\/[A-Za-z0-9_+=,.@-]+)+)`),
 	"google_api":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
@@ -111,8 +114,8 @@ var (
         "square_oauth__secret":          regexp.MustCompile(`sq0csp-[0-9A-Za-z\\-_]{43}`),
         "twitter_access_token":          regexp.MustCompile(`[tT][wW][iI][tT][tT][eE][rR].*[1-9][0-9]+-[0-9a-zA-Z]{40}`),
 	"heroku_api__key":               regexp.MustCompile(`(?i)[hH][eE][rR][oO][kK][uU].*[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}`),
-        "generic_api_key":               regexp.MustCompile(`(?i)[aA][pP][iI]_?[kK][eE][yY].*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
-        "generic_secret":                regexp.MustCompile(`(?i)[sS][eE][cC][rR][eE][tT].*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
+        "generic_api_key":               regexp.MustCompile(`(?i)["']?[aA][pP][iI]_?[kK][eE][yY]["']?\s*[:=]\s*["']([0-9a-zA-Z]{32,45})["']`),
+        "generic_secret":                regexp.MustCompile(`(?i)["']?[sS][eE][cC][rR][eE][tT]_?[kK][eE][yY]?["']?\s*[:=]\s*["']([0-9a-zA-Z]{32,45})["']`),
         "slack_webhook":                 regexp.MustCompile(`https://hooks[.]slack[.]com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}`),
         "gcp_service_account":           regexp.MustCompile(`\"type\": \"service_account\"`),
         "password_in_url":               regexp.MustCompile(`[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"'\\s]`),
@@ -132,8 +135,8 @@ var (
 	"segment_write_key":             regexp.MustCompile(`sk_[A-Za-z0-9]{32}`),
 	"tiktok_access_token":           regexp.MustCompile(`tiktok_access_token=[a-zA-Z0-9_]+`),
 	"slack_client_secret":           regexp.MustCompile(`xoxs-[0-9]{1,9}.[0-9A-Za-z]{1,12}.[0-9A-Za-z]{24,64}`),
-        "phone_number":                  regexp.MustCompile(`^\+\d{9,14}$`),
-        "email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
+    "phone_number":                  regexp.MustCompile(`^\+\d{9,14}$`),
+    "email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
 	"AliCloudAccessKey":		 regexp.MustCompile(`^LTAI[A-Za-z0-9]{12,20}$`),
 	"TencentCloudAccessKey":	 regexp.MustCompile(`^AKID[A-Za-z0-9]{13,20}$`),
     }
@@ -144,16 +147,16 @@ var (
     / // /\ \/ _ \/ // / _ \/ __/ -_) __/
     \___/___/_//_/\_,_/_//_/\__/\__/_/  
 
-     v0.1                         Created by cc1a2b
+     v0.2 SecretHunter            
     `
 )
 
 func main() {
     // Define command-line
     var (
-        url, list, jsFile, output, regex, cookies, proxy string
-        threads                                           int
-        quiet, help                                       bool
+        url, list, filePath, dirPath, output, regex, cookies, proxy string
+        threads                                                      int
+        quiet, help, recursive                                       bool
     )
 
 
@@ -161,8 +164,11 @@ func main() {
     flag.StringVar(&url, "url", "", "Input a URL")
     flag.StringVar(&list, "l", "", "Input a file with URLs (.txt)")
     flag.StringVar(&list, "list", "", "Input a file with URLs (.txt)")
-    flag.StringVar(&jsFile, "f", "", "Path to JavaScript file")
-    flag.StringVar(&jsFile, "file", "", "Path to JavaScript file")
+    flag.StringVar(&filePath, "f", "", "Path to any file to scan for secrets")
+    flag.StringVar(&filePath, "file", "", "Path to any file to scan for secrets")
+    flag.StringVar(&dirPath, "d", "", "Path to directory to scan for secrets")
+    flag.StringVar(&dirPath, "dir", "", "Path to directory to scan for secrets")
+    flag.BoolVar(&recursive, "recursive", false, "Recursively scan directories")
     flag.StringVar(&output, "o", "output.txt", "Output file path (default: output.txt)")
     flag.StringVar(&output, "output", "output.txt", "Output file path (default: output.txt)")
     flag.StringVar(&regex, "r", "", "RegEx for filtering endpoints")
@@ -188,20 +194,20 @@ func main() {
 
 
 
-    if url == "" && list == "" && jsFile == "" {
+    if url == "" && list == "" && filePath == "" && dirPath == "" {
         if isInputFromStdin() {
             scanner := bufio.NewScanner(os.Stdin)
             for scanner.Scan() {
                 inputURL := scanner.Text()
                 
-                processInputs(inputURL, list, output, regex, cookies, proxy, threads)
+                processInputs(inputURL, list, output, regex, cookies, proxy, threads, quiet)
             }
             if err := scanner.Err(); err != nil {
                 fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
             }
             return
         }
-        fmt.Println("Error: Either -u, -l, or -f must be provided.")
+        fmt.Println("Error: Either -u, -l, -f, or -d must be provided.")
         os.Exit(1)
     }
 
@@ -216,13 +222,30 @@ func main() {
         disableColors()
     }
 
-
-    if jsFile != "" {
-        processJSFile(jsFile, regex)
+    // Clear the output file if specified
+    if output != "" {
+        var err error
+        outFile, err := os.Create(output)
+        if err != nil {
+            fmt.Printf("Error creating output file: %v\n", err)
+            return
+        }
+        outFile.Close()
     }
 
 
-    processInputs(url, list, output, regex, cookies, proxy, threads)
+    if filePath != "" {
+        processFile(filePath, regex, quiet, output)
+    }
+
+    if dirPath != "" {
+        processDirectory(dirPath, regex, recursive, output, cookies, proxy, threads, quiet)
+    }
+
+    // Only process URL inputs if url or list is actually provided
+    if url != "" || list != "" {
+        processInputs(url, list, output, regex, cookies, proxy, threads, quiet)
+    }
 }
 
 
@@ -231,13 +254,14 @@ func customHelp() {
     fmt.Println("Usage:")
     fmt.Println("  -u, --url URL                 Input a URL")
     fmt.Println("  -l, --list FILE.txt           Input a file with URLs (.txt)")
-    fmt.Println("  -f, --file FILE.js            Path to JavaScript file")
+    fmt.Println("  -f, --file FILE               Path to any file type to scan for secrets")
+    fmt.Println("  -d, --dir DIR                 Path to directory to scan for secrets")
     fmt.Println()
     fmt.Println("Options:")
     fmt.Println("  -t, --threads INT             Number of concurrent threads (default: 5)")
-    fmt.Println("  -c, --cookies <cookies>       Cookies for authenticated JS files")
+    fmt.Println("  -c, --cookies <cookies>       Cookies for authenticated files")
     fmt.Println("  -p, --proxy host:port         Set proxy (host:port), e.g., 127.0.0.1:8080 for Burp Suite")
-    fmt.Println("  -nc, --no-color               Disable color output")
+    fmt.Println("  --recursive                   Recursively scan directories")
     fmt.Println("  -q, --quiet                   Suppress ASCII art output")
     fmt.Println("  -o, --output FILENAME.txt     Output file path (default: output.txt)")
     fmt.Println("  -r, --regex <pattern>         RegEx for filtering endpoints")
@@ -273,28 +297,114 @@ func disableColors() {
 }
 
 
-func processJSFile(jsFile, regex string) {
-    if _, err := os.Stat(jsFile); os.IsNotExist(err) {
-        fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
+func processFile(filePath, regex string, quiet bool, output string) {
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], filePath)
     } else if err != nil {
-        fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], jsFile, err)
+        fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], filePath, err)
     } else {
-        fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], jsFile)
-        searchForSensitiveData(jsFile, regex, "", "")
+        if !quiet {
+            fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], filePath)
+        }
+        _, sensitiveData := searchForSensitiveData(filePath, regex, "", "", quiet)
+        
+        // Write any findings to the output file if it exists
+        if len(sensitiveData) > 0 && output != "" {
+            // Create a local output file
+            outFile, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+            if err != nil {
+                fmt.Printf("Error opening output file: %v\n", err)
+            } else {
+                defer outFile.Close()
+                fmt.Fprintln(outFile, "FILE:", filePath)
+                for name, matches := range sensitiveData {
+                    for _, match := range matches {
+                        fmt.Fprintf(outFile, "Sensitive Data [%s]: %s\n", name, match)
+                    }
+                }
+            }
+        }
     }
 }
 
+func processDirectory(dirPath, regex string, recursive bool, output, cookies, proxy string, threads int, quiet bool) {
+    var wg sync.WaitGroup
+    fileChannel := make(chan string)
+    
+    var fileWriter *os.File
+    if output != "" {
+        var err error
+        fileWriter, err = os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if err != nil {
+            fmt.Printf("Error opening output file: %v\n", err)
+            return
+        }
+        defer fileWriter.Close()
+    }
+    
+    // Start worker goroutines
+    for i := 0; i < threads; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for file := range fileChannel {
+                _, sensitiveData := searchForSensitiveData(file, regex, cookies, proxy, quiet)
+                
+                if len(sensitiveData) > 0 {
+                    if fileWriter != nil {
+                        // Use mutex or file locking if needed in the future
+                        fmt.Fprintln(fileWriter, "FILE:", file)
+                        for name, matches := range sensitiveData {
+                            for _, match := range matches {
+                                fmt.Fprintf(fileWriter, "Sensitive Data [%s]: %s\n", name, match)
+                            }
+                        }
+                    }
+                }
+            }
+        }()
+    }
+    
+    // Walk the directory tree
+    walkFn := func(path string, info os.FileInfo, err error) error {
+        if err != nil {
+            fmt.Printf("[%sERROR%s] Unable to access path %s: %v\n", colors["RED"], colors["NC"], path, err)
+            return nil // Continue walking
+        }
+        
+        // Skip directories if not recursive
+        if info.IsDir() {
+            if path != dirPath && !recursive {
+                return filepath.SkipDir
+            }
+            return nil
+        }
+        
+        // Skip binary files or other file types you want to exclude
+        // You can add more conditions here if needed
+        fileChannel <- path
+        return nil
+    }
+    
+    if err := filepath.Walk(dirPath, walkFn); err != nil {
+        fmt.Printf("[%sERROR%s] Error walking directory %s: %v\n", colors["RED"], colors["NC"], dirPath, err)
+    }
+    
+    close(fileChannel)
+    wg.Wait()
+}
 
-func processInputs(url, list, output, regex, cookie, proxy string, threads int) {
+
+func processInputs(url, list, output, regex, cookie, proxy string, threads int, quiet bool) {
     var wg sync.WaitGroup
     urlChannel := make(chan string)
 
     var fileWriter *os.File
     if output != "" {
         var err error
-        fileWriter, err = os.Create(output)
+        fileWriter, err = os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
         if err != nil {
-            fmt.Printf("Error creating output file: %v\n", err)
+            fmt.Printf("Error opening output file: %v\n", err)
             return
         }
         defer fileWriter.Close()
@@ -305,20 +415,22 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
         go func() {
             defer wg.Done()
             for u := range urlChannel {
-                _, sensitiveData := searchForSensitiveData(u, regex, cookie, proxy)
+                _, sensitiveData := searchForSensitiveData(u, regex, cookie, proxy, quiet)
 
-                if fileWriter != nil {
-                    fmt.Fprintln(fileWriter, "URL:", u)
-                    for name, matches := range sensitiveData {
-                        for _, match := range matches {
-                            fmt.Fprintf(fileWriter, "Sensitive Data [%s]: %s\n", name, match)
+                if len(sensitiveData) > 0 {
+                    if fileWriter != nil {
+                        fmt.Fprintln(fileWriter, "URL:", u)
+                        for name, matches := range sensitiveData {
+                            for _, match := range matches {
+                                fmt.Fprintf(fileWriter, "Sensitive Data [%s]: %s\n", name, match)
+                            }
                         }
-                    }
-                } else {
-                    fmt.Println("URL:", u)
-                    for name, matches := range sensitiveData {
-                        for _, match := range matches {
-                            fmt.Printf("Sensitive Data [%s]: %s\n", name, match)
+                    } else if !quiet {
+                        fmt.Println("URL:", u)
+                        for name, matches := range sensitiveData {
+                            for _, match := range matches {
+                                fmt.Printf("Sensitive Data [%s]: %s\n", name, match)
+                            }
                         }
                     }
                 }
@@ -326,7 +438,7 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
         }()
     }
 
-    if err := enqueueURLs(url, list, urlChannel, regex); err != nil {
+    if err := enqueueURLs(url, list, urlChannel, regex, quiet, output); err != nil {
         fmt.Printf("Error in input processing: %v\n", err)
         close(urlChannel)
         return
@@ -337,11 +449,11 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
 }
 
 
-func enqueueURLs(url, list string, urlChannel chan<- string, regex string) error {
+func enqueueURLs(url, list string, urlChannel chan<- string, regex string, quiet bool, output string) error {
     if list != "" {
         return enqueueFromFile(list, urlChannel)
     } else if url != "" {
-        enqueueSingleURL(url, urlChannel, regex)
+        enqueueSingleURL(url, urlChannel, regex, quiet, output)
     } else {
         enqueueFromStdin(urlChannel)
     }
@@ -362,11 +474,11 @@ func enqueueFromFile(filename string, urlChannel chan<- string) error {
     return scanner.Err()
 }
 
-func enqueueSingleURL(url string, urlChannel chan<- string, regex string) {
+func enqueueSingleURL(url string, urlChannel chan<- string, regex string, quiet bool, output string) {
     if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
         urlChannel <- url
     } else {
-        processJSFile(url, regex)
+        processFile(url, regex, quiet, output)
     }
 }
 
@@ -381,7 +493,7 @@ func enqueueFromStdin(urlChannel chan<- string) {
 }
 
 
-func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[string][]string) {
+func searchForSensitiveData(urlStr, regex, cookie, proxy string, quiet bool) (string, map[string][]string) {
     var client *http.Client
 
     if proxy != "" {
@@ -390,9 +502,12 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
             fmt.Printf("Invalid proxy URL: %v\n", err)
             return urlStr, nil
         }
-        client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+        client = &http.Client{
+            Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+            Timeout: 30 * time.Second,
+        }
     } else {
-        client = &http.Client{}
+        client = &http.Client{Timeout: 30 * time.Second}
     }
 
     var sensitiveData map[string][]string
@@ -418,28 +533,28 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
         }
         defer resp.Body.Close()
 
-        body, err := ioutil.ReadAll(resp.Body)
+        body, err := io.ReadAll(resp.Body)
         if err != nil {
             fmt.Printf("Error reading response body: %v\n", err)
             return urlStr, nil
         }
 
-        sensitiveData = reportMatches(urlStr, body, regexPatterns)
+        sensitiveData = reportMatches(urlStr, body, regexPatterns, quiet)
     } else {
-        body, err := ioutil.ReadFile(urlStr)
+        body, err := os.ReadFile(urlStr)
         if err != nil {
             fmt.Printf("Error reading local file %s: %v\n", urlStr, err)
             return urlStr, nil
         }
 
-        sensitiveData = reportMatches(urlStr, body, regexPatterns)
+        sensitiveData = reportMatches(urlStr, body, regexPatterns, quiet)
     }
 
     return urlStr, sensitiveData
 }
 
 
-func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.Regexp) map[string][]string {
+func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.Regexp, quiet bool) map[string][]string {
     matchesMap := make(map[string][]string)
 
     for name, pattern := range regexPatterns {
@@ -455,15 +570,67 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
     }
 
     if len(matchesMap) > 0 {
-        fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
+        if !quiet {
+            fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
+        }
+        
+        // Create a map to deduplicate matches by type
+        uniqueMatches := make(map[string]map[string]bool)
+        totalMatchCount := 0
+        
         for name, matches := range matchesMap {
+            if uniqueMatches[name] == nil {
+                uniqueMatches[name] = make(map[string]bool)
+            }
             for _, match := range matches {
-                fmt.Printf("%s ==> %s\n", name, match)
+                if !uniqueMatches[name][match] {
+                    totalMatchCount++
+                }
+                uniqueMatches[name][match] = true
             }
         }
-    } else {
-        fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], source)
+        
+        // Display summary count if not in quiet mode
+        if !quiet {
+            fmt.Printf("Found %d unique sensitive data matches across %d categories\n", totalMatchCount, len(uniqueMatches))
+        }
+        
+        // First display matches with counts if not in quiet mode
+        if !quiet {
+            for name, matches := range uniqueMatches {
+                if len(matches) > 5 {
+                    fmt.Printf("[%s%s%s] Found %d matches\n", colors["YELLOW"], name, colors["NC"], len(matches))
+                    // Show only first 3 matches for each type when there are many
+                    count := 0
+                    for match := range matches {
+                        if count < 3 {
+                            // Truncate match if too long
+                            displayMatch := match
+                            if len(displayMatch) > 60 {
+                                displayMatch = displayMatch[:57] + "..."
+                            }
+                            fmt.Printf("  - %s\n", displayMatch)
+                        }
+                        count++
+                    }
+                    if count > 3 {
+                        fmt.Printf("  - ... %d more (use -o to write full results to file)\n", count-3)
+                    }
+                } else {
+                    fmt.Printf("[%s%s%s]\n", colors["YELLOW"], name, colors["NC"])
+                    for match := range matches {
+                        // Truncate match if too long
+                        displayMatch := match
+                        if len(displayMatch) > 60 {
+                            displayMatch = displayMatch[:57] + "..."
+                        }
+                        fmt.Printf("  - %s\n", displayMatch)
+                    }
+                }
+            }
+        }
     }
+    // Don't print anything for missing/no findings
 
     return matchesMap
 }

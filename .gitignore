@@ -8,3 +8,8 @@ node_modules/
 .env
 *.js
 output.txt
+
+# Test directories
+test*/
+testdir/
+testlot/
