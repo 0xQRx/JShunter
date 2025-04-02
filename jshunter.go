@@ -318,10 +318,34 @@ func processFile(filePath, regex string, quiet bool, output string) {
                 fmt.Printf("Error opening output file: %v\n", err)
             } else {
                 defer outFile.Close()
-                fmt.Fprintln(outFile, "FILE:", filePath)
+                fmt.Fprintln(outFile, "\nFILE:", filePath)
+                fmt.Fprintln(outFile, strings.Repeat("-", 80))
+                
+                // Display summary count first
+                uniqueMatches := make(map[string]map[string]bool)
+                totalMatchCount := 0
                 for name, matches := range sensitiveData {
+                    if uniqueMatches[name] == nil {
+                        uniqueMatches[name] = make(map[string]bool)
+                    }
                     for _, match := range matches {
-                        fmt.Fprintf(outFile, "Sensitive Data [%s]: %s\n", name, match)
+                        if !uniqueMatches[name][match] {
+                            totalMatchCount++
+                        }
+                        uniqueMatches[name][match] = true
+                    }
+                }
+                fmt.Fprintf(outFile, "Found %d unique sensitive data matches across %d categories\n\n", totalMatchCount, len(uniqueMatches))
+                
+                // Display by category
+                for name, matches := range uniqueMatches {
+                    fmt.Fprintf(outFile, "\n[%s] Found %d matches\n", name, len(matches))
+                    for match := range matches {
+                        displayMatch := match
+                        if len(displayMatch) > 60 {
+                            displayMatch = displayMatch[:57] + "..."
+                        }
+                        fmt.Fprintf(outFile, "    %s\n", displayMatch)
                     }
                 }
             }
@@ -355,10 +379,33 @@ func processDirectory(dirPath, regex string, recursive bool, output, cookies, pr
                 if len(sensitiveData) > 0 {
                     if fileWriter != nil {
                         // Use mutex or file locking if needed in the future
-                        fmt.Fprintln(fileWriter, "FILE:", file)
+                        fmt.Fprintln(fileWriter, "\nFILE:", file)
+                        fmt.Fprintln(fileWriter, strings.Repeat("-", 80))
+                        // Display summary count first
+                        uniqueMatches := make(map[string]map[string]bool)
+                        totalMatchCount := 0
                         for name, matches := range sensitiveData {
+                            if uniqueMatches[name] == nil {
+                                uniqueMatches[name] = make(map[string]bool)
+                            }
                             for _, match := range matches {
-                                fmt.Fprintf(fileWriter, "Sensitive Data [%s]: %s\n", name, match)
+                                if !uniqueMatches[name][match] {
+                                    totalMatchCount++
+                                }
+                                uniqueMatches[name][match] = true
+                            }
+                        }
+                        fmt.Fprintf(fileWriter, "Found %d unique sensitive data matches across %d categories\n\n", totalMatchCount, len(uniqueMatches))
+                        
+                        // Display by category
+                        for name, matches := range uniqueMatches {
+                            fmt.Fprintf(fileWriter, "\n[%s] Found %d matches\n", name, len(matches))
+                            for match := range matches {
+                                displayMatch := match
+                                if len(displayMatch) > 60 {
+                                    displayMatch = displayMatch[:57] + "..."
+                                }
+                                fmt.Fprintf(fileWriter, "    %s\n", displayMatch)
                             }
                         }
                     }
@@ -421,10 +468,33 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int, 
 
                 if len(sensitiveData) > 0 {
                     if fileWriter != nil {
-                        fmt.Fprintln(fileWriter, "URL:", u)
+                        fmt.Fprintln(fileWriter, "\nURL:", u)
+                        fmt.Fprintln(fileWriter, strings.Repeat("-", 80))
+                        // Display summary count first
+                        uniqueMatches := make(map[string]map[string]bool)
+                        totalMatchCount := 0
                         for name, matches := range sensitiveData {
+                            if uniqueMatches[name] == nil {
+                                uniqueMatches[name] = make(map[string]bool)
+                            }
                             for _, match := range matches {
-                                fmt.Fprintf(fileWriter, "Sensitive Data [%s]: %s\n", name, match)
+                                if !uniqueMatches[name][match] {
+                                    totalMatchCount++
+                                }
+                                uniqueMatches[name][match] = true
+                            }
+                        }
+                        fmt.Fprintf(fileWriter, "Found %d unique sensitive data matches across %d categories\n\n", totalMatchCount, len(uniqueMatches))
+                        
+                        // Display by category
+                        for name, matches := range uniqueMatches {
+                            fmt.Fprintf(fileWriter, "\n[%s] Found %d matches\n", name, len(matches))
+                            for match := range matches {
+                                displayMatch := match
+                                if len(displayMatch) > 60 {
+                                    displayMatch = displayMatch[:57] + "..."
+                                }
+                                fmt.Fprintf(fileWriter, "    %s\n", displayMatch)
                             }
                         }
                     } else if !quiet {
@@ -600,34 +670,14 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
         // First display matches with counts if not in quiet mode
         if !quiet {
             for name, matches := range uniqueMatches {
-                if len(matches) > 5 {
-                    fmt.Printf("[%s%s%s] Found %d matches\n", colors["YELLOW"], name, colors["NC"], len(matches))
-                    // Show only first 3 matches for each type when there are many
-                    count := 0
-                    for match := range matches {
-                        if count < 3 {
-                            // Truncate match if too long
-                            displayMatch := match
-                            if len(displayMatch) > 60 {
-                                displayMatch = displayMatch[:57] + "..."
-                            }
-                            fmt.Printf("  - %s\n", displayMatch)
-                        }
-                        count++
+                fmt.Printf("\n[%s%s%s] Found %d matches\n", colors["YELLOW"], name, colors["NC"], len(matches))
+                for match := range matches {
+                    // Truncate match if too long
+                    displayMatch := match
+                    if len(displayMatch) > 60 {
+                        displayMatch = displayMatch[:57] + "..."
                     }
-                    if count > 3 {
-                        fmt.Printf("  - ... %d more (use -o to write full results to file)\n", count-3)
-                    }
-                } else {
-                    fmt.Printf("[%s%s%s]\n", colors["YELLOW"], name, colors["NC"])
-                    for match := range matches {
-                        // Truncate match if too long
-                        displayMatch := match
-                        if len(displayMatch) > 60 {
-                            displayMatch = displayMatch[:57] + "..."
-                        }
-                        fmt.Printf("  - %s\n", displayMatch)
-                    }
+                    fmt.Printf("    %s\n", displayMatch)
                 }
             }
         }
