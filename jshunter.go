@@ -58,6 +58,14 @@ var (
 	"authorization_Basic":           regexp.MustCompile(`Basic [a-zA-Z0-9=:_\+\/-]{5,100}`),
 	"authorization_bearer":          regexp.MustCompile(`bearer [a-zA-Z0-9_\-\.=:_\+\/]{5,100}`),
 	"authorization_Bearer":          regexp.MustCompile(`Bearer [a-zA-Z0-9_\-\.=:_\+\/]{5,100}`),
+    // Pattern 1: Full connection string with DefaultEndpointsProtocol and EndpointSuffix.
+    "azure_blob_storage_key_1": regexp.MustCompile(`DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[^;]+;EndpointSuffix=core\.windows\.net`),
+    // Pattern 2: Connection string without protocol and endpoint explicit prefix, but containing core.windows.net.
+    "azure_blob_storage_key_2": regexp.MustCompile(`AccountName=[^;]+;AccountKey=[^;]+;[^;]*core\.windows\.net`),
+    // Pattern 3: A specific pattern matching AccountKey of exactly 88 characters (using allowed Base64 characters).
+    "azure_blob_storage_key_3": regexp.MustCompile(`AccountKey=[A-Za-z0-9+/=]{88}`),
+    // Pattern 4: A more flexible AccountKey pattern matching between 80 and 100 allowed characters.
+    "azure_blob_storage_key_4": regexp.MustCompile(`AccountKey=[A-Za-z0-9+/=]{80,100}`),
         "authorization_api":             regexp.MustCompile(`(?i)\bapi(?:[_\s]*key|[\s]*[\=\:])\s*["']?[a-zA-Z0-9_\-]{5,100}\b`),
 	"twilio_api_key":                regexp.MustCompile(`SK[0-9a-fA-F]{32}`),
 	//"twilio_account_sid":            regexp.MustCompile(`AC[a-zA-Z0-9_\-]{32}`),
@@ -118,6 +126,14 @@ var (
 	"heroku_api__key":               regexp.MustCompile(`(?i)[hH][eE][rR][oO][kK][uU].*[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}`),
         "generic_api_key":               regexp.MustCompile(`(?i)["']?[aA][pP][iI]_?[kK][eE][yY]["']?\s*[:=]\s*["']([0-9a-zA-Z]{32,45})["']`),
         "generic_secret":                regexp.MustCompile(`(?i)["']?[sS][eE][cC][rR][eE][tT]_?[kK][eE][yY]?["']?\s*[:=]\s*["']([0-9a-zA-Z]{32,45})["']`),
+        // Generic_secret_2: Matches JSON-escaped keys, e.g. \"clientSecret\":\"<value>\"
+        "generic_secret_2": regexp.MustCompile(`\\\"(?:[A-Za-z]+)Secret\\\":\\\"([A-Za-z0-9_-]+)\\\"`),
+
+        // Generic_secret_3: Matches keys with normal quotes, e.g. "clientSecret":"<value>"
+        "generic_secret_3": regexp.MustCompile(`"(?:[A-Za-z]+)Secret":"([A-Za-z0-9_-]+)"`),
+
+        // Generic_secret_4: Matches keys without a starting quote, e.g. clientSecret:"<value>"
+        "generic_secret_4": regexp.MustCompile(`(?:[A-Za-z]+)Secret:"([A-Za-z0-9_-]+)"`),
         "slack_webhook":                 regexp.MustCompile(`https://hooks[.]slack[.]com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}`),
         "gcp_service_account":           regexp.MustCompile(`\"type\": \"service_account\"`),
         "password_in_url":               regexp.MustCompile(`[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"'\\s]`),
