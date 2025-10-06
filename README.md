@@ -10,6 +10,8 @@
 - **Web Resource Support**: Fetch and analyze JavaScript, configuration files, and other resources from web URLs
 - **Customizable Options**: Configure threads for concurrent processing, use cookies for authenticated sessions, and set up proxy settings
 - **Flexible Output**: Save results to a specified output file for further analysis
+- **JSON Output**: Export findings in structured JSON format for easy integration with other tools
+- **Extended Truncation**: Display up to 200 characters of matched secrets (previously 60)
 - **Filter Support**: Use regular expressions to filter the results
 
 ![image](https://github.com/user-attachments/assets/563a36f0-3d68-4870-9f4a-4342aea2fa5f)
@@ -80,6 +82,19 @@ jshunter -u "https://example.com/config.js" -p 127.0.0.1:8080
 jshunter -u "https://example.com/app.js" -c "session=abc123"
 ```
 
+### JSON Output Format
+
+```bash
+jshunter -f config.js --json -o secrets.json
+```
+
+The JSON output includes:
+- Scan timestamp
+- Total findings and sources count
+- Detailed findings by source with categorized matches
+- Summary statistics by secret type
+- Truncation tracking for long values
+
 ## Command-Line Options
 
 - `-u, --url <URL>`: Input a URL to scan for secrets
@@ -88,6 +103,7 @@ jshunter -u "https://example.com/app.js" -c "session=abc123"
 - `-d, --dir <directory>`: Path to directory to scan for secrets
 - `--recursive`: Recursively scan directories
 - `-o, --output <file>`: Output file path (default: output.txt)
+- `--json`: Output results in JSON format (automatically enables quiet mode)
 - `-t, --threads <number>`: Number of concurrent threads (default: 5)
 - `-c, --cookies <cookies>`: Add cookies for authenticated resources
 - `-p, --proxy <host:port>`: Set proxy (host:port)

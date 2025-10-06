@@ -2,6 +2,7 @@ package main
 
 import (
     "bufio"
+    "encoding/json"
     "flag"
     "fmt"
     "io"
@@ -15,6 +16,45 @@ import (
     "time"
 )
 
+// JSON output structures
+type JSONOutput struct {
+    ScanTimestamp string            `json:"scan_timestamp"`
+    TotalFindings int               `json:"total_findings"`
+    TotalSources  int               `json:"total_sources"`
+    Findings      []SourceFinding   `json:"findings"`
+    Summary       ScanSummary       `json:"summary"`
+}
+
+type SourceFinding struct {
+    Source       string         `json:"source"`
+    SourceType   string         `json:"source_type"`
+    TotalMatches int            `json:"total_matches"`
+    Categories   []CategoryData `json:"categories"`
+}
+
+type CategoryData struct {
+    Category string      `json:"category"`
+    Matches  []MatchData `json:"matches"`
+}
+
+type MatchData struct {
+    Value          string `json:"value"`
+    Truncated      bool   `json:"truncated"`
+    OriginalLength int    `json:"original_length,omitempty"`
+}
+
+type ScanSummary struct {
+    ByCategory map[string]int `json:"by_category"`
+}
+
+// Global JSON output collector
+var (
+    jsonOutputData JSONOutput
+    jsonMutex      sync.Mutex
+    jsonMode       bool
+)
+
+const maxDisplayLength = 200  // Changed from 60 to 200
 
 var colors = map[string]string{
     "RED":    "\033[0;31m",
@@ -201,6 +241,7 @@ func main() {
     flag.BoolVar(&quiet, "quiet", false, "Quiet mode: suppress ASCII art output")
     flag.BoolVar(&help, "h", false, "Display help message")
     flag.BoolVar(&help, "help", false, "Display help message")
+    flag.BoolVar(&jsonMode, "json", false, "Output in JSON format")
 
 
     flag.Parse()
@@ -210,7 +251,10 @@ func main() {
         return
     }
 
-
+    if jsonMode {
+        initJSONOutput()
+        quiet = true  // Force quiet mode in JSON mode
+    }
 
     if url == "" && list == "" && filePath == "" && dirPath == "" {
         if isInputFromStdin() {
@@ -240,8 +284,8 @@ func main() {
         disableColors()
     }
 
-    // Clear the output file if specified
-    if output != "" {
+    // Clear the output file if specified (only for non-JSON mode)
+    if output != "" && !jsonMode {
         var err error
         outFile, err := os.Create(output)
         if err != nil {
@@ -264,6 +308,13 @@ func main() {
     if url != "" || list != "" {
         processInputs(url, list, output, regex, cookies, proxy, threads, quiet)
     }
+
+    // Write JSON output if in JSON mode
+    if jsonMode && output != "" {
+        if err := writeJSONOutput(output); err != nil {
+            fmt.Printf("Error writing JSON output: %v\n", err)
+        }
+    }
 }
 
 
@@ -281,6 +332,7 @@ func customHelp() {
     fmt.Println("  -p, --proxy host:port         Set proxy (host:port), e.g., 127.0.0.1:8080 for Burp Suite")
     fmt.Println("  --recursive                   Recursively scan directories")
     fmt.Println("  -q, --quiet                   Suppress ASCII art output")
+    fmt.Println("  --json                        Output in JSON format")
     fmt.Println("  -o, --output FILENAME.txt     Output file path (default: output.txt)")
     fmt.Println("  -r, --regex <pattern>         RegEx for filtering endpoints")
     fmt.Println("  -h, --help                    Display this help message")
@@ -325,9 +377,14 @@ func processFile(filePath, regex string, quiet bool, output string) {
             fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], filePath)
         }
         _, sensitiveData := searchForSensitiveData(filePath, regex, "", "", quiet)
-        
-        // Write any findings to the output file if it exists
-        if len(sensitiveData) > 0 && output != "" {
+
+        // Add to JSON output if in JSON mode
+        if jsonMode && len(sensitiveData) > 0 {
+            addJSONFinding(filePath, "file", sensitiveData)
+        }
+
+        // Write any findings to the output file if it exists (skip if JSON mode)
+        if len(sensitiveData) > 0 && output != "" && !jsonMode {
             // Create a local output file
             outFile, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
             if err != nil {
@@ -358,8 +415,8 @@ func processFile(filePath, regex string, quiet bool, output string) {
                     fmt.Fprintf(outFile, "\n[%s] Found %d matches\n", name, len(matches))
                     for match := range matches {
                         displayMatch := match
-                        if len(displayMatch) > 60 {
-                            displayMatch = displayMatch[:57] + "..."
+                        if len(displayMatch) > maxDisplayLength {
+                            displayMatch = displayMatch[:maxDisplayLength-3] + "..."
                         }
                         fmt.Fprintf(outFile, "    %s\n", displayMatch)
                     }
@@ -391,8 +448,13 @@ func processDirectory(dirPath, regex string, recursive bool, output, cookies, pr
             defer wg.Done()
             for file := range fileChannel {
                 _, sensitiveData := searchForSensitiveData(file, regex, cookies, proxy, quiet)
-                
-                if len(sensitiveData) > 0 {
+
+                // Add to JSON output if in JSON mode
+                if jsonMode && len(sensitiveData) > 0 {
+                    addJSONFinding(file, "file", sensitiveData)
+                }
+
+                if len(sensitiveData) > 0 && !jsonMode {
                     if fileWriter != nil {
                         // Use mutex or file locking if needed in the future
                         fmt.Fprintln(fileWriter, "\nFILE:", file)
@@ -482,7 +544,12 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int, 
             for u := range urlChannel {
                 _, sensitiveData := searchForSensitiveData(u, regex, cookie, proxy, quiet)
 
-                if len(sensitiveData) > 0 {
+                // Add to JSON output if in JSON mode
+                if jsonMode && len(sensitiveData) > 0 {
+                    addJSONFinding(u, "url", sensitiveData)
+                }
+
+                if len(sensitiveData) > 0 && !jsonMode {
                     if fileWriter != nil {
                         fmt.Fprintln(fileWriter, "\nURL:", u)
                         fmt.Fprintln(fileWriter, strings.Repeat("-", 80))
@@ -690,8 +757,8 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
                 for match := range matches {
                     // Truncate match if too long
                     displayMatch := match
-                    if len(displayMatch) > 60 {
-                        displayMatch = displayMatch[:57] + "..."
+                    if len(displayMatch) > maxDisplayLength {
+                        displayMatch = displayMatch[:maxDisplayLength-3] + "..."
                     }
                     fmt.Printf("    %s\n", displayMatch)
                 }
@@ -701,6 +768,94 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
     // Don't print anything for missing/no findings
 
     return matchesMap
+}
+
+// JSON helper functions
+func truncateValue(value string, maxLen int) (string, bool, int) {
+    if len(value) <= maxLen {
+        return value, false, 0
+    }
+    return value[:maxLen-3] + "...", true, len(value)
+}
+
+func initJSONOutput() {
+    jsonOutputData = JSONOutput{
+        ScanTimestamp: time.Now().Format(time.RFC3339),
+        TotalFindings: 0,
+        TotalSources:  0,
+        Findings:      []SourceFinding{},
+        Summary: ScanSummary{
+            ByCategory: make(map[string]int),
+        },
+    }
+}
+
+func addJSONFinding(source string, sourceType string, sensitiveData map[string][]string) {
+    jsonMutex.Lock()
+    defer jsonMutex.Unlock()
+
+    finding := SourceFinding{
+        Source:       source,
+        SourceType:   sourceType,
+        TotalMatches: 0,
+        Categories:   []CategoryData{},
+    }
+
+    // Process each category
+    uniqueMatches := make(map[string]map[string]bool)
+    for name, matches := range sensitiveData {
+        if uniqueMatches[name] == nil {
+            uniqueMatches[name] = make(map[string]bool)
+        }
+        for _, match := range matches {
+            uniqueMatches[name][match] = true
+        }
+    }
+
+    for name, matchSet := range uniqueMatches {
+        category := CategoryData{
+            Category: name,
+            Matches:  []MatchData{},
+        }
+
+        for match := range matchSet {
+            truncated, isTruncated, originalLen := truncateValue(match, maxDisplayLength)
+            matchData := MatchData{
+                Value:     truncated,
+                Truncated: isTruncated,
+            }
+            if isTruncated {
+                matchData.OriginalLength = originalLen
+            }
+            category.Matches = append(category.Matches, matchData)
+            finding.TotalMatches++
+            jsonOutputData.TotalFindings++
+
+            // Update summary
+            if jsonOutputData.Summary.ByCategory[name] == 0 {
+                jsonOutputData.Summary.ByCategory[name] = 0
+            }
+            jsonOutputData.Summary.ByCategory[name]++
+        }
+
+        if len(category.Matches) > 0 {
+            finding.Categories = append(finding.Categories, category)
+        }
+    }
+
+    if finding.TotalMatches > 0 {
+        jsonOutputData.Findings = append(jsonOutputData.Findings, finding)
+        jsonOutputData.TotalSources++
+    }
+}
+
+func writeJSONOutput(output string) error {
+    jsonData, err := json.MarshalIndent(jsonOutputData, "", "  ")
+    if err != nil {
+        return err
+    }
+
+    return os.WriteFile(output, jsonData, 0644)
 }
 
 // isFiltered checks if a match is part of the filter
